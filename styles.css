@@ -76,7 +76,7 @@
    Base
    ========================================================= */
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 80px; -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; -webkit-text-size-adjust: 100%; overflow-x: clip; }
 body {
   margin: 0;
   background: var(--bg);
@@ -84,6 +84,7 @@ body {
   font: 400 16px/1.65 var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  overflow-x: clip; /* clips without turning body into a second (vertical) scroll container */
   transition: background-color 0.5s var(--ease), color 0.5s var(--ease);
 }
 h1, h2, h3 { font-family: var(--font-display); line-height: 1.12; margin: 0; letter-spacing: -0.025em; font-weight: 700; }
@@ -1070,10 +1071,11 @@ svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-widt
 @keyframes botBob { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-2px) rotate(-4deg); } 75% { transform: translateY(-1px) rotate(4deg); } }
 
 /* Intro: boot screen + flying robot */
+html.intro-pending, html.is-locked, html.is-locked body { overflow: hidden; overscroll-behavior: none; }
 html.intro-pending body::before { content: ""; position: fixed; inset: 0; z-index: 300; background: #0d090a; }
 .intro {
   --ix: 50%; --iy: 45%;
-  position: fixed; inset: 0; z-index: 300; overflow: hidden; color: #f3eeee;
+  position: fixed; inset: 0; z-index: 300; overflow: hidden; touch-action: none; color: #f3eeee;
   background: radial-gradient(55% 45% at 50% 40%, rgba(239, 68, 68, 0.22), transparent 70%), #0d090a;
   clip-path: circle(150% at var(--ix) var(--iy));
 }

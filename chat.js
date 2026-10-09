@@ -374,7 +374,7 @@
         </div>
         <button type="button" class="intro__skip">Skip intro ⏭</button>`;
       document.body.appendChild(overlay);
-      document.body.style.overflow = "hidden";
+      html.classList.add("is-locked");
       flier.classList.add("is-asleep");
     }
     document.body.appendChild(flier);
@@ -444,7 +444,7 @@
       }
       flier.classList.remove("is-waving");
       await fly();
-      if (overlay) { overlay.remove(); document.body.style.overflow = ""; }
+      if (overlay) { overlay.remove(); html.classList.remove("is-locked"); }
       land();
     }
 
