@@ -11,6 +11,8 @@
 
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const $ = (s, el = document) => el.querySelector(s);
+  // Visitor-facing text goes through I18N; what lands in the inbox stays in English
+  const t = (s, vars) => (window.I18N ? window.I18N.t(s, vars) : s);
   const esc = (t) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -20,41 +22,41 @@
   /* ---------- Validation ---------- */
   const validators = {
     name(v) {
-      if (v.length < 2) return "Could you type your full name?";
-      if (v.length > 60) return "That's a bit long. Just your name is fine.";
-      if (!/^[\p{L}][\p{L} .'-]*$/u.test(v)) return "Please use letters only for your name.";
+      if (v.length < 2) return t("Could you type your full name?");
+      if (v.length > 60) return t("That's a bit long. Just your name is fine.");
+      if (!/^[\p{L}][\p{L} .'-]*$/u.test(v)) return t("Please use letters only for your name.");
       return null;
     },
     email(v) {
-      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) return "That doesn't look like a valid email. Mind checking it?";
+      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) return t("That doesn't look like a valid email. Mind checking it?");
       const domain = v.split("@")[1].toLowerCase();
-      if (DISPOSABLE.includes(domain)) return "Temporary email addresses can't receive my reply. Please use your regular email.";
+      if (DISPOSABLE.includes(domain)) return t("Temporary email addresses can't receive my reply. Please use your regular email.");
       return null;
     },
     short(v) {
-      if (v.length < 2) return "Could you add a little more detail?";
-      if (v.length > 120) return "Please keep this under 120 characters.";
+      if (v.length < 2) return t("Could you add a little more detail?");
+      if (v.length > 120) return t("Please keep this under 120 characters.");
       return spamCheck(v);
     },
     message(v) {
-      if (v.length < 15) return "Could you tell me a bit more? A sentence or two is perfect.";
-      if (v.length > 1000) return `That's ${v.length} characters. Please keep it under 1000.`;
+      if (v.length < 15) return t("Could you tell me a bit more? A sentence or two is perfect.");
+      if (v.length > 1000) return t("That's {n} characters. Please keep it under 1000.", { n: v.length });
       return spamCheck(v);
     },
   };
   function spamCheck(v) {
-    if (/<[^>]+>/.test(v)) return "Please remove any HTML from your message.";
-    if ((v.match(/https?:\/\/|www\./gi) || []).length > 2) return "Please include no more than 2 links.";
-    if (/(.)\1{7,}/.test(v)) return "That looks like a typo. Mind rewriting it?";
-    if (/\b(viagra|casino|crypto ?giveaway|seo services|backlinks?|loan offer)\b/i.test(v)) return "Sorry, this message looks like spam and can't be sent.";
+    if (/<[^>]+>/.test(v)) return t("Please remove any HTML from your message.");
+    if ((v.match(/https?:\/\/|www\./gi) || []).length > 2) return t("Please include no more than 2 links.");
+    if (/(.)\1{7,}/.test(v)) return t("That looks like a typo. Mind rewriting it?");
+    if (/\b(viagra|casino|crypto ?giveaway|seo services|backlinks?|loan offer)\b/i.test(v)) return t("Sorry, this message looks like spam and can't be sent.");
     const letters = v.replace(/[^a-z]/gi, "");
-    if (letters.length > 20 && letters === letters.toUpperCase()) return "Please don't write in all caps 🙂";
+    if (letters.length > 20 && letters === letters.toUpperCase()) return t("Please don't write in all caps 🙂");
     return null;
   }
   function rateCheck() {
     const log = (store.get("chatSent") || []).filter((t) => Date.now() - t < 864e5);
-    if (log.length >= RATE.maxPerDay) return "You've already sent a few messages today. I'll reply soon, or you can email me directly.";
-    if (log.length && Date.now() - log[log.length - 1] < RATE.minGapMs) return "Please wait a minute before sending another message.";
+    if (log.length >= RATE.maxPerDay) return t("You've already sent a few messages today. I'll reply soon, or you can email me directly.");
+    if (log.length && Date.now() - log[log.length - 1] < RATE.minGapMs) return t("Please wait a minute before sending another message.");
     return null;
   }
 
@@ -132,6 +134,7 @@
       <p class="chat__foot">Protected against spam · Your details are only used to reply</p>
     </section>`;
   document.body.appendChild(root);
+  window.I18N && window.I18N.translate(root);
 
   const fab = $(".chat__fab", root), panel = $(".chat__panel", root), log = $(".chat__log", root);
   const chipsEl = $(".chat__chips", root), bar = $(".chat__bar", root), input = $(".chat__input", root), hp = $(".chat__hp", root);
@@ -154,13 +157,13 @@
     setTimeout(() => { typing.remove(); addMsg(html, "bot", extra); resolve(); }, reduceMotion ? 50 : 650);
   });
   const setChips = (list = []) => {
-    chipsEl.innerHTML = list.map((c) => `<button type="button" class="chat__chip" data-val="${esc(c.value || c)}">${esc(c.label || c)}</button>`).join("");
+    chipsEl.innerHTML = list.map((c) => `<button type="button" class="chat__chip" data-val="${esc(c.value || c)}">${esc(t(c.label || c))}</button>`).join("");
     chipsEl.hidden = !list.length;
   };
-  const setInput = (enabled, placeholder = "Type a message…") => {
+  const setInput = (enabled, placeholder = t("Type a message…")) => {
     input.disabled = !enabled;
     $(".chat__send", root).disabled = !enabled;
-    input.placeholder = enabled ? placeholder : "Choose an option above…";
+    input.placeholder = enabled ? placeholder : t("Choose an option above…");
     bar.classList.toggle("is-disabled", !enabled);
     if (enabled && panel.offsetParent) input.focus({ preventScroll: true });
   };
@@ -170,8 +173,8 @@
     log.innerHTML = "";
     data = {}; intent = null; steps = []; stepIndex = 0; mode = "intent"; startedAt = Date.now();
     setChips(); setInput(false);
-    await botSay("Hi! 👋 Thanks for stopping by.");
-    await botSay("I'm Abin, a software engineer. What brings you here today?");
+    await botSay(t("Hi! 👋 Thanks for stopping by."));
+    await botSay(t("I'm Abin, a software engineer. What brings you here today?"));
     setChips([{ label: "🚀 I have a project", value: "project" }, { label: "💼 I'm hiring", value: "hire" }, { label: "👋 Just saying hi", value: "hello" }]);
   }
 
@@ -184,21 +187,21 @@
       if (mode === "intent") {
         intent = value; steps = flows[intent];
         const label = { project: "I have a project", hire: "I'm hiring", hello: "Just saying hi" }[intent];
-        addMsg(esc(label), "me"); setChips();
+        addMsg(esc(t(label)), "me"); setChips();
         mode = "name";
-        await botSay("Great! First, what's your name?");
-        setInput(true, "Your name");
+        await botSay(t("Great! First, what's your name?"));
+        setInput(true, t("Your name"));
         return;
       }
       if (mode === "name" || mode === "email") {
         const err = validators[mode](value);
         addMsg(esc(value), "me");
         input.value = ""; autoGrow();
-        if (err) { await botSay(err, "msg--warn"); setInput(true, mode === "name" ? "Your name" : "you@company.com"); return; }
+        if (err) { await botSay(err, "msg--warn"); setInput(true, mode === "name" ? t("Your name") : "you@company.com"); return; }
         data[mode] = value;
         if (mode === "name") {
           mode = "email";
-          await botSay(`Nice to meet you, <b>${esc(value.split(" ")[0])}</b>! What's your email, so I can reply?`);
+          await botSay(t("Nice to meet you, <b>{name}</b>! What's your email, so I can reply?", { name: esc(value.split(" ")[0]) }));
           setInput(true, "you@company.com");
         } else {
           mode = "step"; stepIndex = 0;
@@ -212,7 +215,7 @@
         input.value = ""; autoGrow();
         if (step.input && !(step.chips || []).includes(value)) {
           const err = validators[step.input](value);
-          if (err) { await botSay(err, "msg--warn"); setInput(true, step.placeholder); if (step.chips) setChips(step.chips); return; }
+          if (err) { await botSay(err, "msg--warn"); setInput(true, t(step.placeholder)); if (step.chips) setChips(step.chips); return; }
         }
         data[step.key] = value;
         setChips();
@@ -223,8 +226,8 @@
       }
       if (mode === "review") {
         setChips();
-        if (value === "send") { addMsg("Send it ✉️", "me"); await send(); }
-        else { addMsg("Start over", "me"); await start(); }
+        if (value === "send") { addMsg(t("Send it ✉️"), "me"); await send(); }
+        else { addMsg(t("Start over"), "me"); await start(); }
       }
     } finally {
       busy = false;
@@ -233,30 +236,30 @@
 
   async function askStep() {
     const step = steps[stepIndex];
-    await botSay(step.ask);
+    await botSay(t(step.ask));
     setChips(step.chips || []);
-    setInput(!!step.input, step.placeholder);
+    setInput(!!step.input, step.placeholder && t(step.placeholder));
   }
 
   const LABELS = { name: "Name", email: "Email", need: "Project", timeline: "Timeline", company: "Company", role: "Role", workType: "Work type", message: "Message" };
   async function review() {
     mode = "review";
     setInput(false);
-    const rows = Object.entries(data).map(([k, v]) => `<div><dt>${LABELS[k] || k}</dt><dd>${esc(v).replace(/\n/g, "<br>")}</dd></div>`).join("");
-    await botSay(`Here's what I'll send:<dl class="msg__summary">${rows}</dl>`);
+    const rows = Object.entries(data).map(([k, v]) => `<div><dt>${t(LABELS[k] || k)}</dt><dd>${esc(v).replace(/\n/g, "<br>")}</dd></div>`).join("");
+    await botSay(`${t("Here's what I'll send:")}<dl class="msg__summary">${rows}</dl>`);
     setChips([{ label: "✉️ Send message", value: "send" }, { label: "↺ Start over", value: "restart" }]);
   }
 
   async function send() {
     setChips(); setInput(false);
     // Anti-spam gates: honeypot, human timing, rate limit
-    if (hp.value) { await botSay("Thanks! Your message has been sent."); return; } // silently drop bots
-    if (Date.now() - startedAt < MIN_HUMAN_MS) { await botSay("Whoa, that was fast! Please take a moment and try again.", "msg--warn"); setChips([{ label: "✉️ Send message", value: "send" }]); mode = "review"; return; }
+    if (hp.value) { await botSay(t("Thanks! Your message has been sent.")); return; } // silently drop bots
+    if (Date.now() - startedAt < MIN_HUMAN_MS) { await botSay(t("Whoa, that was fast! Please take a moment and try again."), "msg--warn"); setChips([{ label: "✉️ Send message", value: "send" }]); mode = "review"; return; }
     const limited = rateCheck();
     if (limited) { await botSay(`${limited} <a href="mailto:${INBOX}">${INBOX}</a>`, "msg--warn"); return; }
 
     if (location.protocol === "file:") {
-      await botSay("I can't send messages while this page is opened as a local file. Please open the site from its web address (or a local server like <b>http://localhost:8000</b>) and try again.", "msg--warn");
+      await botSay(t("I can't send messages while this page is opened as a local file. Please open the site from its web address (or a local server like <b>http://localhost:8000</b>) and try again."), "msg--warn");
       console.warn("[chat] FormSubmit does not accept submissions from file:// pages. Serve the site over http(s).");
       setChips([{ label: "↻ Try again", value: "send" }, { label: "↺ Start over", value: "restart" }]);
       mode = "review";
@@ -284,17 +287,17 @@
       typing.remove();
       if (!res.ok || json.success === "false" || json.success === false) throw new Error(json.message || `HTTP ${res.status}`);
       store.set("chatSent", [...(store.get("chatSent") || []).filter((t) => Date.now() - t < 864e5), Date.now()]);
-      await botSay(`✅ <b>Sent!</b> Thanks, ${esc(data.name.split(" ")[0])}. I'll reply to <b>${esc(data.email)}</b> soon.`, "msg--ok");
+      await botSay(t("✅ <b>Sent!</b> Thanks, {name}. I'll reply to <b>{email}</b> soon.", { name: esc(data.name.split(" ")[0]), email: esc(data.email) }), "msg--ok");
       setChips([{ label: "↺ Send another", value: "restart" }]);
       mode = "review";
     } catch (e) {
       typing.remove();
       console.warn("[chat] FormSubmit error:", e.message);
       if (/activation/i.test(e.message)) {
-        await botSay("Almost ready! This inbox still needs a one-time activation, so your message couldn't be delivered yet.", "msg--warn");
+        await botSay(t("Almost ready! This inbox still needs a one-time activation, so your message couldn't be delivered yet."), "msg--warn");
       }
       const mail = `mailto:${INBOX}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(Object.entries(data).map(([k, v]) => `${LABELS[k] || k}: ${v}`).join("\n"))}`;
-      await botSay(`Sorry, the message couldn't be sent right now. You can <a href="${mail}">send it by email instead</a>, or try again.`, "msg--warn");
+      await botSay(t("Sorry, the message couldn't be sent right now. You can <a href=\"{mail}\">send it by email instead</a>, or try again.", { mail }), "msg--warn");
       setChips([{ label: "↻ Try again", value: "send" }, { label: "↺ Start over", value: "restart" }]);
       mode = "review";
     }
@@ -305,7 +308,7 @@
     panel.hidden = !yes;
     root.classList.toggle("is-open", yes);
     fab.setAttribute("aria-expanded", String(yes));
-    fab.setAttribute("aria-label", yes ? "Close chat" : "Open chat");
+    fab.setAttribute("aria-label", yes ? t("Close chat") : t("Open chat"));
     teaser.hidden = true;
     $(".chat__badge", root).hidden = true;
     if (yes && !log.children.length) start();
@@ -358,7 +361,7 @@
       overlay = document.createElement("div");
       overlay.className = "intro";
       overlay.setAttribute("role", "status");
-      overlay.setAttribute("aria-label", "Loading");
+      overlay.setAttribute("aria-label", t("Loading"));
       const streaks = Array.from({ length: 26 }, () => `<i style="left:${Math.random() * 100}%;animation-duration:${0.5 + Math.random() * 0.9}s;animation-delay:${-Math.random()}s;height:${30 + Math.random() * 90}px;opacity:${0.15 + Math.random() * 0.45}"></i>`).join("");
       overlay.innerHTML = `
         <div class="intro__streaks" aria-hidden="true">${streaks}</div>
@@ -374,6 +377,7 @@
         </div>
         <button type="button" class="intro__skip">Skip intro ⏭</button>`;
       document.body.appendChild(overlay);
+      window.I18N && window.I18N.translate(overlay);
       html.classList.add("is-locked");
       flier.classList.add("is-asleep");
     }
@@ -428,7 +432,7 @@
         await bootScreen();
         await wait(250);
         // wave goodbye
-        say.textContent = "Let's go! 🚀";
+        say.textContent = t("Let's go! 🚀");
         flier.classList.add("is-waving", "is-saying");
         await wait(850);
         flier.classList.remove("is-saying");
@@ -489,15 +493,18 @@
       root.classList.add("is-landed");
       setTimeout(() => root.classList.remove("is-landed"), 900);
       if (full && panel.hidden) {
-        $(".chat__teaser-text", root).textContent = "Need anything? I'm right here.";
+        $(".chat__teaser-text", root).textContent = t("Need anything? I'm right here.");
         teaser.hidden = false;
         try { sessionStorage.setItem("chatTeased", "1"); } catch { /* storage unavailable */ }
-        setTimeout(() => { teaser.hidden = true; $(".chat__teaser-text", root).textContent = "Have a project or a role in mind? Let's chat."; }, 5000);
+        setTimeout(() => { teaser.hidden = true; $(".chat__teaser-text", root).textContent = t("Have a project or a role in mind? Let's chat."); }, 5000);
       }
     }
 
     run();
   })();
+
+  // A new language restarts the chat if the visitor hasn't started answering yet
+  window.I18N && window.I18N.onChange(() => { if (mode === "intent" && log.children.length) start(); });
 
   // The mascot's eyes follow the cursor
   if (window.matchMedia("(pointer: fine)").matches && !reduceMotion) {

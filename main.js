@@ -6,6 +6,8 @@
   const finePointer = window.matchMedia("(pointer: fine)").matches;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const t = (s, vars) => (window.I18N ? window.I18N.t(s, vars) : s);
+  const onLang = (fn) => window.I18N && window.I18N.onChange(fn);
 
   const reveal = () => requestAnimationFrame(() => document.body.classList.add("is-loaded"));
   if (root.classList.contains("intro-pending")) {
@@ -29,55 +31,77 @@
     lab && lab.setTheme();
   });
 
-  /* ---------- Accent palette picker ---------- */
-  const accentWrap = $("#accent");
-  if (accentWrap) {
-    const btn = $("#accentBtn", accentWrap);
-    const swatches = $$(".swatch", accentWrap);
-    const nameEl = $("#accentName", accentWrap);
+  /* ---------- Nav popovers: language + accent palette ---------- */
+  // Shared behaviour: toggle on click, close on outside click / Escape, arrow keys move through radios
+  const navPop = (wrap, items, onPick) => {
+    const btn = $(".icon-btn", wrap);
     const setOpen = (open) => {
-      accentWrap.classList.toggle("is-open", open);
+      wrap.classList.toggle("is-open", open);
       btn.setAttribute("aria-expanded", String(open));
     };
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = !wrap.classList.contains("is-open");
+      $$(".navpop.is-open").forEach((w) => w !== wrap && w.classList.remove("is-open"));
+      setOpen(open);
+      if (open) (items.find((s) => s.tabIndex === 0) || items[0]).focus({ preventScroll: true });
+    });
+    items.forEach((s, i) => {
+      s.addEventListener("click", () => onPick(s));
+      s.addEventListener("keydown", (e) => {
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const next = items[(i + step + items.length) % items.length];
+        next.focus();
+        onPick(next);
+      });
+    });
+    document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) setOpen(false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && wrap.classList.contains("is-open")) { setOpen(false); btn.focus(); }
+    });
+    return setOpen;
+  };
+  const markChecked = (items, isOn) => items.forEach((s) => {
+    const on = isOn(s);
+    s.setAttribute("aria-checked", String(on));
+    s.tabIndex = on ? 0 : -1;
+  });
+
+  const accentWrap = $("#accent");
+  if (accentWrap) {
+    const swatches = $$(".swatch", accentWrap);
+    const nameEl = $("#accentName", accentWrap);
     const sync = () => {
       const cur = root.dataset.accent || "red";
-      swatches.forEach((s) => {
-        const on = s.dataset.accent === cur;
-        s.setAttribute("aria-checked", String(on));
-        s.tabIndex = on ? 0 : -1;
-        if (on) nameEl.textContent = s.getAttribute("aria-label");
-      });
+      markChecked(swatches, (s) => s.dataset.accent === cur);
+      const on = swatches.find((s) => s.dataset.accent === cur);
+      if (on) nameEl.textContent = on.getAttribute("aria-label");
     };
-    const pick = (key) => {
+    sync();
+    onLang(sync);
+    navPop(accentWrap, swatches, (s) => {
+      const key = s.dataset.accent;
       if (key === "red") delete root.dataset.accent; else root.dataset.accent = key;
       try { localStorage.setItem("accent", key); } catch { /* storage unavailable */ }
       sync();
       syncThemeUI();
       orb && orb.setTheme(isDark());
       lab && lab.setTheme();
+    });
+  }
+
+  const langWrap = $("#lang");
+  if (langWrap && window.I18N) {
+    const opts = $$(".lang__opt", langWrap);
+    const sync = () => {
+      markChecked(opts, (o) => o.dataset.lang === I18N.lang);
+      $("#langCode").textContent = I18N.lang.toUpperCase();
     };
     sync();
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const open = !accentWrap.classList.contains("is-open");
-      setOpen(open);
-      if (open) (swatches.find((s) => s.tabIndex === 0) || swatches[0]).focus({ preventScroll: true });
-    });
-    swatches.forEach((s, i) => {
-      s.addEventListener("click", () => pick(s.dataset.accent));
-      s.addEventListener("keydown", (e) => {
-        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-        if (!step) return;
-        e.preventDefault();
-        const next = swatches[(i + step + swatches.length) % swatches.length];
-        next.focus();
-        pick(next.dataset.accent);
-      });
-    });
-    document.addEventListener("click", (e) => { if (!accentWrap.contains(e.target)) setOpen(false); });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && accentWrap.classList.contains("is-open")) { setOpen(false); btn.focus(); }
-    });
+    onLang(sync);
+    navPop(langWrap, opts, (o) => I18N.set(o.dataset.lang));
   }
 
   /* ---------- Nav ---------- */
@@ -175,7 +199,7 @@
   };
   $$("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(btn.dataset.copy); showToast("Copied to clipboard"); }
+      try { await navigator.clipboard.writeText(btn.dataset.copy); showToast(t("Copied to clipboard")); }
       catch { showToast(btn.dataset.copy); }
     });
   });
@@ -217,9 +241,10 @@
       g.hidden = !on;
       if (on) { g.classList.remove("is-entering"); void g.offsetWidth; g.classList.add("is-entering"); }
     });
-    msgLabel.textContent = copyFor[next].label;
-    submitLabel.textContent = copyFor[next].submit;
+    msgLabel.textContent = t(copyFor[next].label);
+    submitLabel.textContent = t(copyFor[next].submit);
   };
+  onLang(() => { msgLabel.textContent = t(copyFor[intent].label); submitLabel.textContent = t(copyFor[intent].submit); });
   $$('input[name="intent"]', form).forEach((r) => r.addEventListener("change", () => setIntent(r.value)));
   // Any CTA with data-intent pre-selects the matching option
   $$("a[data-intent]").forEach((a) => a.addEventListener("click", () => setIntent(a.dataset.intent)));
@@ -235,7 +260,7 @@
       f.setAttribute("aria-invalid", valid ? "false" : "true");
       if (!valid && ok) { f.focus(); ok = false; }
     });
-    if (!ok) { showToast("Please fill in the highlighted fields"); return; }
+    if (!ok) { showToast(t("Please fill in the highlighted fields")); return; }
 
     const d = Object.fromEntries(new FormData(form));
     let subject, lines;
@@ -249,7 +274,7 @@
     const body = `${d.message}\n\n${lines.join("\n")}\n\n— ${d.name}\n${d.email}`;
     window.location.href = `mailto:abindas3.2@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     done.hidden = false;
-    $("#formNote").textContent = "Your email app should now be open with your message ready to send.";
+    $("#formNote").textContent = t("Your email app should now be open with your message ready to send.");
     $("#formEdit").focus();
   });
   $("#formEdit").addEventListener("click", () => { done.hidden = true; message.focus(); });
@@ -263,7 +288,7 @@
       const cur = $("span:not(.is-out)", swap);
       wi = (wi + 1) % words.length;
       const next = document.createElement("span");
-      next.textContent = words[wi];
+      next.textContent = t(words[wi]);
       cur.classList.add("is-out");
       swap.appendChild(next);
       setTimeout(() => cur.remove(), 500);
