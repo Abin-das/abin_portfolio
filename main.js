@@ -18,7 +18,7 @@
   const themeBtn = $("#themeToggle");
   const syncThemeUI = () => {
     themeBtn.setAttribute("aria-label", isDark() ? "Switch to light theme" : "Switch to dark theme");
-    $('meta[name="theme-color"]').setAttribute("content", isDark() ? "#0f0b0c" : "#fdfafa");
+    $('meta[name="theme-color"]').setAttribute("content", getComputedStyle(root).getPropertyValue("--bg").trim() || (isDark() ? "#0f0b0c" : "#fdfafa"));
   };
   syncThemeUI();
   themeBtn.addEventListener("click", () => {
@@ -28,6 +28,57 @@
     orb && orb.setTheme(isDark());
     lab && lab.setTheme();
   });
+
+  /* ---------- Accent palette picker ---------- */
+  const accentWrap = $("#accent");
+  if (accentWrap) {
+    const btn = $("#accentBtn", accentWrap);
+    const swatches = $$(".swatch", accentWrap);
+    const nameEl = $("#accentName", accentWrap);
+    const setOpen = (open) => {
+      accentWrap.classList.toggle("is-open", open);
+      btn.setAttribute("aria-expanded", String(open));
+    };
+    const sync = () => {
+      const cur = root.dataset.accent || "red";
+      swatches.forEach((s) => {
+        const on = s.dataset.accent === cur;
+        s.setAttribute("aria-checked", String(on));
+        s.tabIndex = on ? 0 : -1;
+        if (on) nameEl.textContent = s.getAttribute("aria-label");
+      });
+    };
+    const pick = (key) => {
+      if (key === "red") delete root.dataset.accent; else root.dataset.accent = key;
+      try { localStorage.setItem("accent", key); } catch { /* storage unavailable */ }
+      sync();
+      syncThemeUI();
+      orb && orb.setTheme(isDark());
+      lab && lab.setTheme();
+    };
+    sync();
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = !accentWrap.classList.contains("is-open");
+      setOpen(open);
+      if (open) (swatches.find((s) => s.tabIndex === 0) || swatches[0]).focus({ preventScroll: true });
+    });
+    swatches.forEach((s, i) => {
+      s.addEventListener("click", () => pick(s.dataset.accent));
+      s.addEventListener("keydown", (e) => {
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const next = swatches[(i + step + swatches.length) % swatches.length];
+        next.focus();
+        pick(next.dataset.accent);
+      });
+    });
+    document.addEventListener("click", (e) => { if (!accentWrap.contains(e.target)) setOpen(false); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && accentWrap.classList.contains("is-open")) { setOpen(false); btn.focus(); }
+    });
+  }
 
   /* ---------- Nav ---------- */
   const nav = $("#nav");
@@ -288,6 +339,17 @@
     const MONO = '"JetBrains Mono", ui-monospace, Menlo, monospace';
     const SANS = '"Inter", system-ui, sans-serif';
 
+    // Accent colours for the screens and lights, refreshed from CSS when the palette changes
+    const A = { c1: "#ef4444", c2: "#dc2626", c3: "#f97316", soft: "#fca5a5" };
+    const readAccent = () => {
+      const css = getComputedStyle(root), v = (n, f) => css.getPropertyValue(n).trim() || f;
+      A.c1 = v("--c1", "#ef4444"); A.c3 = v("--c3", "#f97316");
+      // the screens are always dark, so use the dark-theme accent text for soft highlights
+      A.soft = isDark() ? v("--accent-text", "#fca5a5") : v("--hl-to", "#fca5a5");
+      A.c2 = v("--accent", "#dc2626");
+    };
+    readAccent();
+
     /* ----- Laptop screen: code editor that types itself ----- */
     const C = { kw: "#c792ea", fn: "#82aaff", str: "#c3e88d", tag: "#f07178", attr: "#ffcb6b", p: "#89ddff", pl: "#ece4e5", cm: "#7a6a6c" };
     const code = [
@@ -348,9 +410,9 @@
         else if (!caret) caret = [x, y];
       });
       if (!caret) caret = [296, 100 + (code.length - 1) * 38];
-      if (caretOn) { ctx.fillStyle = "#f87171"; ctx.fillRect(caret[0] + 2, caret[1] - 20, 3, 26); }
+      if (caretOn) { ctx.fillStyle = A.soft; ctx.fillRect(caret[0] + 2, caret[1] - 20, 3, 26); }
       // status bar
-      ctx.fillStyle = "#dc2626"; ctx.fillRect(0, H - 34, W, 34);
+      ctx.fillStyle = A.c2; ctx.fillRect(0, H - 34, W, 34);
       ctx.font = `500 15px ${SANS}`; ctx.fillStyle = "#ffffff";
       ctx.fillText("⎇ main", 18, H - 12);
       ctx.fillText(chars >= totalChars ? "✓ Compiled successfully" : "● Editing…", 120, H - 12);
@@ -373,34 +435,34 @@
       ctx.font = `400 17px ${SANS}`; ctx.fillStyle = "#8f7f81"; ctx.fillText("Search dishes, restaurants", 62, 194);
       // promo card
       const g = ctx.createLinearGradient(30, 236, W - 30, 400);
-      g.addColorStop(0, "#dc2626"); g.addColorStop(1, "#f97316");
+      g.addColorStop(0, A.c1); g.addColorStop(1, A.c3);
       ctx.fillStyle = g; rr(ctx, 30, 236, W - 60, 150, 22); ctx.fill();
       ctx.fillStyle = "rgba(255,255,255,0.14)"; ctx.beginPath(); ctx.arc(W - 70, 270 + Math.sin(t * 1.5) * 6, 70, 0, 7); ctx.fill();
       ctx.font = `700 27px ${SANS}`; ctx.fillStyle = "#fff"; ctx.fillText("Free delivery", 54, 296);
       ctx.font = `400 17px ${SANS}`; ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillText("on your first 3 orders", 54, 326);
       ctx.fillStyle = "#fff"; rr(ctx, 54, 342, 110, 30, 15); ctx.fill();
-      ctx.font = `700 14px ${SANS}`; ctx.fillStyle = "#dc2626"; ctx.fillText("Order now", 72, 362);
+      ctx.font = `700 14px ${SANS}`; ctx.fillStyle = A.c2; ctx.fillText("Order now", 72, 362);
       // categories
       ["Biryani", "Pizza", "Dosa", "Shakes"].forEach((c, i) => {
         const x = 30 + i * 100, on = i === Math.floor(t / 1.6) % 4;
-        ctx.fillStyle = on ? "#ef4444" : "#221a1b"; rr(ctx, x, 408, 90, 40, 20); ctx.fill();
+        ctx.fillStyle = on ? A.c1 : "#221a1b"; rr(ctx, x, 408, 90, 40, 20); ctx.fill();
         ctx.font = `600 15px ${SANS}`; ctx.fillStyle = on ? "#fff" : "#c4b5b7"; ctx.textAlign = "center"; ctx.fillText(c, x + 45, 434); ctx.textAlign = "left";
       });
       // order tracking card
       ctx.fillStyle = "#1a1415"; rr(ctx, 30, 472, W - 60, 150, 20); ctx.fill();
-      ctx.strokeStyle = "rgba(248,113,113,0.25)"; ctx.lineWidth = 1.5; rr(ctx, 30, 472, W - 60, 150, 20); ctx.stroke();
+      ctx.strokeStyle = A.soft; ctx.globalAlpha = 0.3; ctx.lineWidth = 1.5; rr(ctx, 30, 472, W - 60, 150, 20); ctx.stroke(); ctx.globalAlpha = 1;
       ctx.font = `700 20px ${SANS}`; ctx.fillStyle = "#fff"; ctx.fillText("Order on the way", 54, 510);
       const p = (t * 0.18) % 1.15, prog = Math.min(p, 1);
       const mins = Math.max(1, Math.round(18 * (1 - prog)));
       ctx.font = `400 16px ${SANS}`; ctx.fillStyle = "#c4b5b7"; ctx.fillText(prog >= 1 ? "Delivered · enjoy your meal" : `Arriving in ${mins} min`, 54, 538);
       const bx = 54, bw = W - 108, by = 572;
       ctx.fillStyle = "#2e2324"; rr(ctx, bx, by, bw, 10, 5); ctx.fill();
-      const bg2 = ctx.createLinearGradient(bx, 0, bx + bw, 0); bg2.addColorStop(0, "#ef4444"); bg2.addColorStop(1, "#fb923c");
+      const bg2 = ctx.createLinearGradient(bx, 0, bx + bw, 0); bg2.addColorStop(0, A.c1); bg2.addColorStop(1, A.c3);
       ctx.fillStyle = bg2; rr(ctx, bx, by, Math.max(10, bw * prog), 10, 5); ctx.fill();
       ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bx + bw * prog, by + 5, 9, 0, 7); ctx.fill();
-      ctx.fillStyle = "#fb923c"; ctx.beginPath(); ctx.arc(bx + bw * prog, by + 5, 5, 0, 7); ctx.fill();
+      ctx.fillStyle = A.c3; ctx.beginPath(); ctx.arc(bx + bw * prog, by + 5, 5, 0, 7); ctx.fill();
       ["Placed", "Cooking", "On the way", "Delivered"].forEach((s, i) => {
-        ctx.font = `500 12px ${SANS}`; ctx.fillStyle = prog >= i / 3 ? "#fca5a5" : "#5e4f51";
+        ctx.font = `500 12px ${SANS}`; ctx.fillStyle = prog >= i / 3 ? A.soft : "#5e4f51";
         ctx.textAlign = i === 0 ? "left" : i === 3 ? "right" : "center";
         ctx.fillText(s, bx + (bw * i) / 3, by + 34);
       });
@@ -409,17 +471,17 @@
       [["Spice Route", "North Indian · 25 min", "#f59e0b"], ["Green Bowl", "Healthy · 18 min", "#10b981"]].forEach(([n, m, col], i) => {
         const y = 646 + i * 92;
         ctx.fillStyle = "#1a1415"; rr(ctx, 30, y, W - 60, 78, 18); ctx.fill();
-        const gg = ctx.createLinearGradient(44, y + 12, 98, y + 66); gg.addColorStop(0, col); gg.addColorStop(1, "#dc2626");
+        const gg = ctx.createLinearGradient(44, y + 12, 98, y + 66); gg.addColorStop(0, col); gg.addColorStop(1, A.c1);
         ctx.fillStyle = gg; rr(ctx, 44, y + 12, 54, 54, 14); ctx.fill();
         ctx.font = `700 18px ${SANS}`; ctx.fillStyle = "#fff"; ctx.fillText(n, 114, y + 36);
         ctx.font = `400 15px ${SANS}`; ctx.fillStyle = "#8f7f81"; ctx.fillText(m, 114, y + 60);
-        ctx.font = `700 15px ${SANS}`; ctx.fillStyle = "#fca5a5"; ctx.textAlign = "right"; ctx.fillText("★ 4." + (6 + i), W - 50, y + 46); ctx.textAlign = "left";
+        ctx.font = `700 15px ${SANS}`; ctx.fillStyle = A.soft; ctx.textAlign = "right"; ctx.fillText("★ 4." + (6 + i), W - 50, y + 46); ctx.textAlign = "left";
       });
       // tab bar
       ctx.fillStyle = "#1a1415"; ctx.fillRect(0, H - 92, W, 92);
       [0, 1, 2, 3].forEach((i) => {
         const x = 70 + i * 103;
-        ctx.fillStyle = i === 0 ? "#ef4444" : "#4f4042";
+        ctx.fillStyle = i === 0 ? A.c1 : "#4f4042";
         rr(ctx, x - 14, H - 64, 28, 28, 8); ctx.fill();
       });
       ctx.fillStyle = "#f3eeee"; rr(ctx, W / 2 - 66, H - 18, 132, 6, 3); ctx.fill();
@@ -520,6 +582,10 @@
     const setTheme = (dark) => {
       bodyMat.color.set(dark ? 0x3b3335 : 0xdcd4d4);
       keyMat.color.set(dark ? 0x1e1819 : 0xc6baba);
+      readAccent();
+      red.color.set(A.c1);
+      orange.color.set(A.c3);
+      drawAll();
       if (!running) render();
     };
 
