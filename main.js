@@ -26,6 +26,7 @@
     try { localStorage.setItem("theme", root.dataset.theme); } catch { /* storage unavailable */ }
     syncThemeUI();
     orb && orb.setTheme(isDark());
+    lab && lab.setTheme();
   });
 
   /* ---------- Nav ---------- */
@@ -598,6 +599,313 @@
     const fallback = $(".orb-fallback", wrap);
     if (fallback) fallback.style.display = "none";
     play();
+    return { setTheme };
+  })();
+
+  /* ---------- Education card: engineering projects (3D printer + app-controlled pick-and-place arm) ---------- */
+  const lab = (() => {
+    const canvas = $("#lab");
+    if (!canvas || !window.THREE) return null;
+    const THREE = window.THREE;
+    const wrap = canvas.parentElement;
+    const card = canvas.closest(".edu");
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    } catch { return null; }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
+    key.position.set(2, 4, 5);
+    scene.add(key);
+    const rim = new THREE.PointLight(0xffffff, 0.6, 20);
+    rim.position.set(-3, 2, -2);
+    scene.add(rim);
+
+    const mat = {
+      accent: new THREE.MeshStandardMaterial({ metalness: 0.25, roughness: 0.4 }),
+      part: new THREE.MeshStandardMaterial({ metalness: 0.1, roughness: 0.5, transparent: true }),
+      frame: new THREE.MeshStandardMaterial({ metalness: 0.5, roughness: 0.45 }),
+      dark: new THREE.MeshStandardMaterial({ metalness: 0.3, roughness: 0.6 }),
+    };
+    const rig = new THREE.Group();
+    scene.add(rig);
+    const box = (w, h, d, m, x = 0, y = 0, z = 0, parent = rig) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    };
+    const cyl = (r, h, m, x = 0, y = 0, z = 0, parent = rig, axis = "y") => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 28), m);
+      if (axis === "z") mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    };
+
+    /* ----- Compact 3D printer (i3 style: moving bed, gantry, hotend) ----- */
+    const printer = new THREE.Group();
+    printer.position.set(-1.45, 0, -0.1);
+    rig.add(printer);
+    box(1.0, 0.06, 0.9, mat.dark, 0, 0.03, 0, printer);
+    const bed = new THREE.Group();
+    printer.add(bed);
+    box(0.8, 0.04, 0.7, mat.frame, 0, 0.2, 0, bed);
+    box(0.06, 0.12, 0.5, mat.dark, 0, 0.12, 0, bed);
+    [-0.48, 0.48].forEach((x) => box(0.06, 1.3, 0.06, mat.frame, x, 0.65, -0.42, printer));
+    box(1.02, 0.06, 0.06, mat.frame, 0, 1.3, -0.42, printer);
+    const gantry = new THREE.Group();
+    printer.add(gantry);
+    box(0.96, 0.05, 0.05, mat.frame, 0, 0, -0.36, gantry);
+    const hotend = new THREE.Group();
+    gantry.add(hotend);
+    box(0.16, 0.18, 0.26, mat.accent, 0, 0.02, -0.22, hotend);
+    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 16), mat.dark);
+    nozzle.rotation.x = Math.PI;
+    nozzle.position.set(0, -0.11, -0.12);
+    hotend.add(nozzle);
+    const BED_TOP = 0.22, PART = 0.2, PART_Z = -0.12;
+
+    // The printed part lives in the rig so the arm can carry it out of the printer
+    const part = box(PART, PART, PART, mat.part);
+
+    /* ----- Drop-off tray ----- */
+    const TRAY = new THREE.Vector3(1.25, 0, 0.55);
+    box(0.5, 0.05, 0.5, mat.dark, TRAY.x, 0.025, TRAY.z);
+
+    /* ----- Robotic arm: turret yaw + 2-link IK + gripper ----- */
+    const H0 = 0.42, L1 = 0.9, L2 = 0.8, GRAB = 0.2;
+    cyl(0.3, 0.1, mat.dark, 0, 0.05, 0);
+    const turret = new THREE.Group();
+    rig.add(turret);
+    cyl(0.18, 0.3, mat.frame, 0, 0.25, 0, turret);
+    const shoulder = new THREE.Group();
+    shoulder.position.y = H0;
+    turret.add(shoulder);
+    cyl(0.1, 0.2, mat.dark, 0, 0, 0, shoulder, "z");
+    box(L1, 0.12, 0.12, mat.accent, L1 / 2, 0, 0, shoulder);
+    const elbow = new THREE.Group();
+    elbow.position.x = L1;
+    shoulder.add(elbow);
+    cyl(0.085, 0.18, mat.dark, 0, 0, 0, elbow, "z");
+    box(L2, 0.1, 0.1, mat.accent, L2 / 2, 0, 0, elbow);
+    const wrist = new THREE.Group();
+    wrist.position.x = L2;
+    elbow.add(wrist);
+    cyl(0.07, 0.16, mat.dark, 0, 0, 0, wrist, "z");
+    box(0.08, 0.06, 0.34, mat.frame, 0, -0.06, 0, wrist);
+    const fingers = [-1, 1].map((s) => box(0.05, 0.2, 0.04, mat.frame, 0, -0.18, s * 0.17, wrist));
+
+    const ik = (target) => {
+      const r = Math.hypot(target.x, target.z);
+      turret.rotation.y = Math.atan2(-target.z, target.x);
+      const dx = r, dy = target.y + GRAB - H0;
+      const d = Math.min(Math.hypot(dx, dy), L1 + L2 - 0.001);
+      const q2 = Math.acos(THREE.MathUtils.clamp((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1));
+      const a1 = Math.atan2(dy, dx) + Math.atan2(L2 * Math.sin(q2), L1 + L2 * Math.cos(q2));
+      shoulder.rotation.z = a1;
+      elbow.rotation.z = -q2;
+      wrist.rotation.z = q2 - a1; // keep the gripper pointing straight down
+    };
+    const setGrip = (g) => fingers.forEach((f, i) => (f.position.z = (i ? 1 : -1) * THREE.MathUtils.lerp(0.17, PART / 2 + 0.02, g)));
+
+    /* ----- Phone running the controller app ----- */
+    const phone = new THREE.Group();
+    phone.position.set(1.85, 0.8, -0.55);
+    phone.rotation.set(-0.1, -0.45, 0);
+    phone.scale.setScalar(1.25);
+    rig.add(phone);
+    box(0.44, 0.86, 0.05, mat.dark, 0, 0, 0, phone);
+    const screen = document.createElement("canvas");
+    screen.width = 256; screen.height = 512;
+    const sctx = screen.getContext("2d");
+    const stex = new THREE.CanvasTexture(screen);
+    stex.encoding = THREE.sRGBEncoding;
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.8), new THREE.MeshBasicMaterial({ map: stex }));
+    glass.position.z = 0.026;
+    phone.add(glass);
+    const theme = { c1: "#ef4444", c3: "#f97316" };
+    const drawScreen = (label, active, joy) => {
+      const g = sctx;
+      g.fillStyle = "#151012"; g.fillRect(0, 0, 256, 512);
+      g.fillStyle = "#f3eeee"; g.font = '600 22px "Inter", system-ui, sans-serif'; g.textAlign = "center";
+      g.fillText("Arm Control", 128, 58);
+      g.fillStyle = "#22c55e"; g.beginPath(); g.arc(70, 92, 5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#bfb2b3"; g.font = '500 15px "JetBrains Mono", ui-monospace, monospace'; g.textAlign = "left";
+      g.fillText("BT connected", 84, 97);
+      g.fillStyle = theme.c3; g.font = '600 17px "JetBrains Mono", ui-monospace, monospace'; g.textAlign = "center";
+      g.fillText(label, 128, 150);
+      // joystick mirrors the arm's yaw
+      g.strokeStyle = "#3a2e30"; g.lineWidth = 3; g.beginPath(); g.arc(128, 260, 70, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = theme.c1; g.beginPath(); g.arc(128 + Math.cos(joy) * 38, 260 - Math.sin(joy) * 38, 26, 0, Math.PI * 2); g.fill();
+      ["PICK", "PLACE"].forEach((t, i) => {
+        const x = 24 + i * 112, on = active === t;
+        g.fillStyle = on ? theme.c1 : "#2a2022";
+        g.beginPath(); g.roundRect ? g.roundRect(x, 380, 96, 54, 14) : g.rect(x, 380, 96, 54); g.fill();
+        g.fillStyle = on ? "#ffffff" : "#8f7f81"; g.font = '700 18px "Inter", system-ui, sans-serif';
+        g.fillText(t, x + 48, 414);
+      });
+      stex.needsUpdate = true;
+    };
+
+    /* ----- One cycle: print → pick → place → home ----- */
+    const PRINT = 4.2, CYCLE = 11;
+    const PRINTER_GRAB = new THREE.Vector3(printer.position.x, BED_TOP + PART / 2, printer.position.z + PART_Z);
+    const TRAY_GRAB = new THREE.Vector3(TRAY.x, 0.05 + PART / 2, TRAY.z);
+    const up = (v, h) => v.clone().setY(v.y + h);
+    const HOME = new THREE.Vector3(0.75, 0.95, 0.35);
+    // [time, gripper target, grip 0..1, carrying]
+    const keys = [
+      [0, HOME, 0], [PRINT, HOME, 0], [5.2, up(PRINTER_GRAB, 0.45), 0], [5.8, PRINTER_GRAB, 0], [6.2, PRINTER_GRAB, 1],
+      [6.8, up(PRINTER_GRAB, 0.45), 1], [8.2, up(TRAY_GRAB, 0.45), 1], [8.7, TRAY_GRAB, 1], [9.1, TRAY_GRAB, 0],
+      [9.6, up(TRAY_GRAB, 0.45), 0], [10.6, HOME, 0], [CYCLE, HOME, 0],
+    ];
+    const ease = (x) => x * x * (3 - 2 * x);
+    const tmp = new THREE.Vector3(), grabPos = new THREE.Vector3();
+    let lastLabel = "";
+
+    const pose = (t) => {
+      t %= CYCLE;
+      let i = 0;
+      while (i < keys.length - 2 && t >= keys[i + 1][0]) i++;
+      const [t0, p0, g0] = keys[i], [t1, p1, g1] = keys[i + 1];
+      const k = ease(THREE.MathUtils.clamp((t - t0) / (t1 - t0 || 1), 0, 1));
+      tmp.lerpVectors(p0, p1, k);
+      ik(tmp);
+      const grip = THREE.MathUtils.lerp(g0, g1, k);
+      setGrip(grip);
+
+      // printer: part grows layer by layer while the hotend sweeps
+      const progress = THREE.MathUtils.clamp(t / PRINT, 0, 1);
+      const printing = t < PRINT;
+      hotend.position.x = printing ? Math.sin(t * 9) * 0.12 : THREE.MathUtils.lerp(hotend.position.x, 0.38, 0.08);
+      bed.position.z = printing ? Math.sin(t * 5.3) * 0.05 : 0;
+      gantry.position.y = BED_TOP + 0.13 + (printing ? PART * progress : THREE.MathUtils.clamp((t - PRINT) * 2, 0, 1) * 0.55 + PART);
+
+      const carrying = t >= 6.2 && t < 9.1;
+      if (carrying) {
+        wrist.getWorldPosition(grabPos);
+        rig.worldToLocal(grabPos);
+        part.position.set(grabPos.x, grabPos.y - GRAB, grabPos.z);
+        part.scale.set(1, 1, 1);
+        part.rotation.y = turret.rotation.y;
+      } else if (t >= 9.1) {
+        part.position.copy(TRAY_GRAB);
+        part.rotation.y = turret.rotation.y;
+      } else {
+        const h = Math.max(progress, 0.02);
+        part.scale.set(1, h, 1);
+        part.rotation.y = 0;
+        part.position.set(PRINTER_GRAB.x, BED_TOP + (PART * h) / 2, PRINTER_GRAB.z + bed.position.z);
+      }
+      mat.part.opacity = t > 10.2 ? 1 - THREE.MathUtils.clamp((t - 10.2) / 0.6, 0, 1) : 1;
+
+      const label = printing ? `PRINTING ${Math.round(progress * 100)}%` : t < 6.2 ? "PICKING…" : t < 9.1 ? "PLACING…" : "HOMING";
+      const active = t >= 5.2 && t < 6.8 ? "PICK" : t >= 8.2 && t < 9.6 ? "PLACE" : "";
+      if (label !== lastLabel || Math.round(t * 10) % 2 === 0) { drawScreen(label, active, turret.rotation.y + Math.PI / 2); lastLabel = label; }
+    };
+
+    // Fit the camera to the whole bench: sample every mesh's box across the arm's motion
+    const pts = [];
+    const corner = new THREE.Vector3();
+    [0, 2, 5.2, 5.8, 6.8, 8.2, 8.7, 10].forEach((t) => {
+      pose(t);
+      rig.updateMatrixWorld(true);
+      rig.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        const { min, max } = o.geometry.boundingBox;
+        for (let n = 0; n < 8; n++) {
+          corner.set(n & 1 ? max.x : min.x, n & 2 ? max.y : min.y, n & 4 ? max.z : min.z).applyMatrix4(o.matrixWorld);
+          pts.push(rig.worldToLocal(corner.clone()));
+        }
+      });
+    });
+    const centre = new THREE.Box3().setFromPoints(pts).getCenter(new THREE.Vector3());
+    pts.forEach((pt) => pt.sub(centre));
+    rig.position.copy(centre).multiplyScalar(-1);
+    const BASE_TILT = { x: 0.42, y: -0.38 };
+    const stage = new THREE.Group();
+    scene.remove(rig);
+    stage.add(rig);
+    scene.add(stage);
+    stage.rotation.set(BASE_TILT.x, BASE_TILT.y, 0);
+
+    const render = () => renderer.render(scene, camera);
+    const tilted = new THREE.Vector3(), tiltQ = new THREE.Quaternion();
+    const resize = () => {
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      // Distance at which every sampled point lands inside the frame (with room for the pointer tilt)
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), tanH = tanV * camera.aspect, fill = 0.86;
+      tiltQ.setFromEuler(new THREE.Euler(BASE_TILT.x, BASE_TILT.y, 0));
+      let dist = 0;
+      pts.forEach((pt) => {
+        tilted.copy(pt).applyQuaternion(tiltQ);
+        dist = Math.max(dist, tilted.z + Math.max(Math.abs(tilted.x) / (tanH * fill), Math.abs(tilted.y) / (tanV * fill)));
+      });
+      camera.position.set(0, 0, dist);
+      camera.updateProjectionMatrix();
+      render();
+    };
+
+    const setTheme = () => {
+      const css = getComputedStyle(root);
+      const col = (v, f) => new THREE.Color(css.getPropertyValue(v).trim() || f).convertSRGBToLinear();
+      theme.c1 = css.getPropertyValue("--c1").trim() || theme.c1;
+      theme.c3 = css.getPropertyValue("--c3").trim() || theme.c3;
+      mat.accent.color.copy(col("--c1", "#ef4444"));
+      mat.part.color.copy(col("--c3", "#f97316"));
+      mat.frame.color.copy(col("--muted", "#8f7f81"));
+      mat.dark.color.copy(col("--surface-3", "#2e2324"));
+      rim.color.copy(col("--c3", "#f97316"));
+      lastLabel = "";
+      pose(clock);
+      if (!running) render();
+    };
+
+    const target = { x: 0, y: 0 };
+    if (finePointer && card) {
+      card.addEventListener("pointermove", (e) => {
+        const b = card.getBoundingClientRect();
+        target.x = ((e.clientX - b.left) / b.width - 0.5) * 2;
+        target.y = ((e.clientY - b.top) / b.height - 0.5) * 2;
+      }, { passive: true });
+      card.addEventListener("pointerleave", () => { target.x = target.y = 0; });
+    }
+
+    let running = false, raf = 0, clock = reduceMotion ? 6.5 : 0, last = performance.now();
+    const frame = (now) => {
+      clock += Math.min((now - last) / 1000, 0.05);
+      last = now;
+      pose(clock);
+      stage.rotation.x += (BASE_TILT.x + target.y * 0.12 - stage.rotation.x) * 0.06;
+      stage.rotation.y += (BASE_TILT.y + target.x * 0.35 - stage.rotation.y) * 0.06;
+      render();
+      raf = requestAnimationFrame(frame);
+    };
+    const play = () => { if (running || reduceMotion) return; running = true; last = performance.now(); raf = requestAnimationFrame(frame); };
+    const pause = () => { running = false; cancelAnimationFrame(raf); };
+
+    let visible = false;
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible && !document.hidden ? play() : pause(); }).observe(wrap);
+    document.addEventListener("visibilitychange", () => (document.hidden || !visible ? pause() : play()));
+    new ResizeObserver(resize).observe(wrap);
+    canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); pause(); canvas.classList.remove("is-ready"); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { lastLabel = ""; pose(clock); if (!running) render(); });
+
+    setTheme();
+    resize();
+    canvas.classList.add("is-ready");
     return { setTheme };
   })();
 })();
